@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { UserPlus, CalendarPlus, Search, X, Play } from 'lucide-react';
+import { UserPlus, CalendarPlus, Search, X, Play, FileClock } from 'lucide-react';
 import { Patient, Appointment } from '../../types';
 import apiClient from '../../services/api';
 import { toast } from '../../components/common/Toaster';
@@ -8,6 +8,7 @@ import AppointmentForm from '../../components/forms/AppointmentForm';
 import Modal from '../../components/common/Modal';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import PatientHistoryView from '../../components/common/PatientHistoryView'; // Import the reusable component
 
 // Simple debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -19,11 +20,7 @@ const useDebounce = (value: string, delay: number) => {
   return debouncedValue;
 };
 
-// --- NEW: Define types for our multi-step modal ---
-type ModalStep = 
-  | 'newPatient' 
-  | 'newAppointment' 
-  | 'confirmStartConsultation';
+type ModalStep = 'newPatient' | 'newAppointment' | 'confirmStartConsultation';
 
 export default function ManagePatients() {
   const { user } = useAuth();
@@ -35,10 +32,12 @@ export default function ManagePatients() {
   const [selectedDate, setSelectedDate] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 500);
 
-  // --- MODIFICATION: State to manage the modal flow ---
   const [modalStep, setModalStep] = useState<ModalStep | null>(null);
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
   const [activeAppointment, setActiveAppointment] = useState<Appointment | null>(null);
+
+  // New state for the dedicated history modal
+  const [patientForHistory, setPatientForHistory] = useState<Patient | null>(null);
 
   const fetchPatients = useCallback(async () => {
     setIsLoading(true);
@@ -59,29 +58,23 @@ export default function ManagePatients() {
     fetchPatients();
   }, [fetchPatients]);
   
-  // --- MODIFICATION: New multi-step handlers ---
-
-  // Step 1 -> 2: After patient is created, move to appointment booking
   const handlePatientCreated = (newPatient: Patient) => {
     setActivePatient(newPatient);
     setModalStep('newAppointment');
-    fetchPatients(); // Refresh patient list in the background
+    fetchPatients();
   };
 
-  // Step 2 -> 3: After appointment is booked, ask to start consultation
   const handleAppointmentCreated = (newAppointment: Appointment) => {
     setActiveAppointment(newAppointment);
     setModalStep('confirmStartConsultation');
   };
 
-  // Step 3 -> Action: Start the consultation
   const handleStartConsultation = async () => {
     if (!activeAppointment) return;
     try {
       await apiClient.put(`/api/appointments/${activeAppointment.id}/status/start`);
       toast.success("Consultation started!");
       closeModal();
-      // Redirect to the dashboard where the consultation modal will now open
       navigate('/doctor/dashboard');
     } catch (error: any) {
       toast.error(error.response?.data?.detail || "Failed to start consultation.");
@@ -182,12 +175,18 @@ export default function ManagePatients() {
                   <td className="px-6 py-4 font-medium text-gray-900">{patient.full_name}</td>
                   <td className="px-6 py-4">{patient.phone_number}</td>
                   <td className="px-6 py-4">{patient.date_of_birth || 'N/A'} / {patient.sex || 'N/A'}</td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4 flex items-center space-x-4">
                      <button 
                         onClick={() => openAppointmentModalForExistingPatient(patient)}
                         className="font-medium text-blue-600 hover:underline flex items-center space-x-1">
                         <CalendarPlus size={16} />
                         <span>Book Appointment</span>
+                     </button>
+                     <button 
+                        onClick={() => setPatientForHistory(patient)}
+                        className="font-medium text-gray-600 hover:underline flex items-center space-x-1">
+                        <FileClock size={16} />
+                        <span>View History</span>
                      </button>
                   </td>
                 </tr>
@@ -197,7 +196,7 @@ export default function ManagePatients() {
         </div>
       </div>
       
-      {/* --- MODIFICATION: The Multi-Step Modal --- */}
+      {/* Multi-step modal for creating a new patient/appointment flow */}
       <Modal isOpen={!!modalStep} onClose={closeModal} title={getModalTitle()}>
         {modalStep === 'newPatient' && (
           <PatientForm onSubmit={handlePatientCreated} onCancel={closeModal} />
@@ -215,9 +214,7 @@ export default function ManagePatients() {
             <p className="text-lg">Appointment booked successfully for {activePatient?.full_name}.</p>
             <p className="text-gray-600">Would you like to start the consultation now?</p>
             <div className="flex justify-center space-x-4 pt-4">
-              <button onClick={closeModal} className="px-6 py-2 border rounded-lg hover:bg-gray-50 font-medium">
-                Not Now
-              </button>
+              <button onClick={closeModal} className="px-6 py-2 border rounded-lg hover:bg-gray-50 font-medium">Not Now</button>
               <button
                 onClick={handleStartConsultation}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center space-x-2"
@@ -229,6 +226,17 @@ export default function ManagePatients() {
           </div>
         )}
       </Modal>
+
+      {/* Dedicated modal for viewing patient history */}
+      {patientForHistory && (
+        <Modal 
+          isOpen={!!patientForHistory} 
+          onClose={() => setPatientForHistory(null)} 
+          title={`History for ${patientForHistory.full_name}`}
+        >
+          <PatientHistoryView patientId={patientForHistory.id} />
+        </Modal>
+      )}
     </>
   );
 }

@@ -1,23 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { X, Send, User, Calendar, Pill, Trash2, Info, PlusCircle } from 'lucide-react';
-import { Appointment, Visit, PrescriptionMedicine } from '../../types/index';
+import { X, Send, User, Pill, Trash2, Info, PlusCircle } from 'lucide-react';
+import { Appointment, PrescriptionMedicine } from '../../types/index';
 import apiClient from '../../services/api';
 import { toast } from '../common/Toaster';
+import PatientHistoryView from '../common/PatientHistoryView'; // Import the reusable component
 
 // Helper function to create a blank medicine row
 const createEmptyMedicine = () => ({
   medicine_name: '',
   dose: '',
   frequency: '',
-  duration_days: 7, // A sensible default
+  duration_days: 7,
   instructions: ''
 });
 
 // Helper function to determine the initial state of the medicine list
 const getInitialMedicines = (appointment: Appointment): Omit<PrescriptionMedicine, 'id' | 'status'>[] => {
   const existingItems = appointment.visit?.prescription?.line_items;
-
-  // If there are existing prescription items, use them.
   if (existingItems && existingItems.length > 0) {
     return existingItems.map(item => ({
       medicine_name: item.medicine_name,
@@ -27,11 +26,8 @@ const getInitialMedicines = (appointment: Appointment): Omit<PrescriptionMedicin
       instructions: item.instructions || ''
     }));
   }
-
-  // Otherwise, if this is a new consultation, create 5 empty placeholders.
   return Array.from({ length: 5 }, createEmptyMedicine);
 };
-
 
 interface ConsultationModalProps {
   appointment: Appointment;
@@ -41,9 +37,7 @@ interface ConsultationModalProps {
 export default function ConsultationModal({ appointment, onClose }: ConsultationModalProps) {
   const patient = appointment.patient;
   
-  // The history state now holds full Appointment objects to get the date
-  const [patientHistory, setPatientHistory] = useState<Appointment[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  // History state is now managed by the PatientHistoryView component
   
   const isEditable = !appointment.visit?.prescription || 
                      appointment.visit.prescription.status === 'Created';
@@ -51,7 +45,6 @@ export default function ConsultationModal({ appointment, onClose }: Consultation
   const [visitData, setVisitData] = useState({ subjective: '', objective: '', assessment: '', plan: '', private_note: '' });
   const [prescriptionMedicines, setPrescriptionMedicines] = useState(() => getInitialMedicines(appointment));
   
-  // This useEffect synchronizes the state if the appointment prop changes
   useEffect(() => {
     if (appointment) {
       setVisitData({
@@ -65,29 +58,10 @@ export default function ConsultationModal({ appointment, onClose }: Consultation
     }
   }, [appointment]);
 
-  // UI states
   const [activeTab, setActiveTab] = useState('consultation');
   const [isSaving, setIsSaving] = useState(false);
 
-  // History fetching useEffect
-  useEffect(() => {
-    const fetchHistory = async () => {
-      if (activeTab === 'history' && patient?.id) {
-        setHistoryLoading(true);
-        try {
-          // Use the new endpoint that returns full appointment objects
-          const response = await apiClient.get<Appointment[]>(`/api/patients/${patient.id}/appointment-history`);
-          setPatientHistory(response.data);
-        } catch (error) {
-          toast.error("Could not load patient history.");
-          setPatientHistory([]);
-        } finally {
-          setHistoryLoading(false);
-        }
-      }
-    };
-    fetchHistory();
-  }, [activeTab, patient?.id]);
+  // History fetching logic has been removed from this component.
 
   const addMedicineRow = () => {
     setPrescriptionMedicines(prev => [...prev, createEmptyMedicine()]);
@@ -111,12 +85,10 @@ export default function ConsultationModal({ appointment, onClose }: Consultation
       const validMedicines = prescriptionMedicines.filter(
         med => med.medicine_name.trim() !== '' && med.dose.trim() !== '' && med.frequency.trim() !== ''
       );
-
       const payload = {
         visit_details: visitData,
         prescription_details: { line_items: validMedicines }
       };
-      
       await apiClient.put(`/api/appointments/${appointment.id}/status/complete`, payload);
       toast.success("Visit details saved successfully.");
       onClose();
@@ -150,9 +122,7 @@ export default function ConsultationModal({ appointment, onClose }: Consultation
         {!isEditable && (
           <div className="px-6 py-3 bg-yellow-50 border-b border-yellow-200 flex items-center space-x-3">
             <Info className="h-5 w-5 text-yellow-600" />
-            <p className="text-sm text-yellow-800 font-medium">
-              This record is in read-only mode because the prescription has been partially or fully dispensed by the pharmacy.
-            </p>
+            <p className="text-sm text-yellow-800 font-medium">This record is read-only because the prescription has been dispensed.</p>
           </div>
         )}
 
@@ -184,61 +154,7 @@ export default function ConsultationModal({ appointment, onClose }: Consultation
           )}
 
           {activeTab === 'history' && (
-            <div>
-                <h3 className="font-semibold text-gray-900 mb-4">Visit History</h3>
-                {historyLoading ? (
-                    <p>Loading history...</p>
-                ) : patientHistory.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                        <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                        <p>No previous completed visits found for this patient.</p>
-                    </div>
-                ) : (
-                    <div className="space-y-6">
-                        {patientHistory.map(pastAppointment => {
-                          const visit = pastAppointment.visit;
-                          if (!visit) return null;
-
-                          return (
-                            <div key={visit.id} className="border border-gray-200 rounded-lg p-4 bg-white">
-                                <div className="mb-3">
-                                    <p className="font-medium text-gray-800">
-                                        Date: {new Date(pastAppointment.appointment_time).toLocaleDateString()}
-                                    </p>
-                                    <p className="text-sm text-gray-500">
-                                        Consultant: Dr. {pastAppointment.doctor.full_name}
-                                    </p>
-                                </div>
-                                {visit.assessment && <p className="text-sm"><strong className="font-medium text-gray-600">Assessment:</strong> {visit.assessment}</p>}
-                                {visit.authored_notes && visit.authored_notes.length > 0 && (
-                                    <div className="mt-3 p-2 bg-yellow-50 border-l-4 border-yellow-400">
-                                        <p className="font-medium text-yellow-800 text-sm">Your Private Notes:</p>
-                                        <p className="text-sm text-yellow-700">{visit.authored_notes[0].content}</p>
-                                    </div>
-                                )}
-                                {visit.prescription && visit.prescription.line_items.length > 0 && (
-                                    <div className="mt-4">
-                                        <h5 className="font-medium text-gray-700 text-sm mb-2">Medications Prescribed:</h5>
-                                        <ul className="space-y-2 pl-4 list-disc text-sm text-gray-600">
-                                            {visit.prescription.line_items.map(med => (
-                                                <li key={med.id}>
-                                                    <span className="font-semibold text-gray-800">{med.medicine_name}</span>
-                                                    {' - '}
-                                                    {med.dose || ''}, {med.frequency || ''}, for {med.duration_days} days.
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-                                {(!visit.prescription || visit.prescription.line_items.length === 0) && (
-                                   <div className="mt-4 text-sm text-gray-500 italic">No medications were prescribed for this visit.</div>
-                                )}
-                            </div>
-                          )
-                        })}
-                    </div>
-                )}
-             </div>
+             <PatientHistoryView patientId={patient.id} />
           )}
 
           {activeTab === 'prescription' && (

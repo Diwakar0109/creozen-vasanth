@@ -4,9 +4,8 @@ import apiClient from '../../services/api';
 import { toast } from '../../components/common/Toaster';
 import { Stethoscope, Calendar, User, X, ChevronDown, ChevronUp } from 'lucide-react';
 import StatusBadge from '../../components/common/StatusBadge';
-import PrescriptionStatusBadge from '../../components/common/PrescriptionStatusBadge';
 
-// The AppointmentRow component remains unchanged.
+// A component for a single appointment row with an expandable view
 const AppointmentRow = ({ appointment }: { appointment: Appointment }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const visit = appointment.visit;
@@ -29,24 +28,37 @@ const AppointmentRow = ({ appointment }: { appointment: Appointment }) => {
       
       {isExpanded && (
         <div className="p-4 border-t border-gray-200 bg-gray-50">
-          <h4 className="font-semibold text-gray-800 mb-3">Consultation Details</h4>
+          <h4 className="font-semibold text-gray-800 mb-4">Consultation Details</h4>
           {!visit ? (
             <p className="text-gray-500">No consultation has been started for this appointment yet.</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-                <div><strong className="text-gray-600">Subjective:</strong> <p className="text-gray-800">{visit.subjective || 'N/A'}</p></div>
-                <div><strong className="text-gray-600">Objective:</strong> <p className="text-gray-800">{visit.objective || 'N/A'}</p></div>
-                <div><strong className="text-gray-600">Assessment (Diagnosis):</strong> <p className="text-gray-800">{visit.assessment || 'N/A'}</p></div>
-                <div><strong className="text-gray-600">Plan:</strong> <p className="text-gray-800">{visit.plan || 'N/A'}</p></div>
-                {visit.prescription && (
-                    <div className="col-span-2 mt-2">
-                        <strong className="text-gray-600">Prescription:</strong>
-                        <div className="mt-1 flex items-center space-x-2">
-                            <span>{visit.prescription.line_items.length} item(s)</span>
-                            <PrescriptionStatusBadge status={visit.prescription.status} />
-                        </div>
-                    </div>
-                )}
+            <div className="space-y-4">
+                {/* S.O.A.P Notes */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                    <div><strong className="text-gray-600">Subjective:</strong> <p className="text-gray-800 whitespace-pre-wrap">{visit.subjective || 'N/A'}</p></div>
+                    <div><strong className="text-gray-600">Objective:</strong> <p className="text-gray-800 whitespace-pre-wrap">{visit.objective || 'N/A'}</p></div>
+                    <div><strong className="text-gray-600">Assessment (Diagnosis):</strong> <p className="text-gray-800 whitespace-pre-wrap">{visit.assessment || 'N/A'}</p></div>
+                    <div><strong className="text-gray-600">Plan:</strong> <p className="text-gray-800 whitespace-pre-wrap">{visit.plan || 'N/A'}</p></div>
+                </div>
+
+                {/* --- THIS IS THE NEW SECTION --- */}
+                {/* Medication Details */}
+                <div>
+                  <strong className="text-sm text-gray-600">Medications Prescribed:</strong>
+                  {visit.prescription && visit.prescription.line_items.length > 0 ? (
+                    <ul className="list-disc pl-5 mt-1 space-y-1 text-sm text-gray-800">
+                      {visit.prescription.line_items.map(med => (
+                        <li key={med.id}>
+                          <span className="font-semibold">{med.medicine_name}</span>
+                          {` - ${med.dose || ''}, ${med.frequency || ''}, for ${med.duration_days} days.`}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic mt-1">No medications were prescribed for this visit.</p>
+                  )}
+                </div>
+                {/* --- END OF NEW SECTION --- */}
             </div>
           )}
         </div>
@@ -86,6 +98,7 @@ export default function AllPatientsLog() {
     fetchAppointments();
   }, [fetchAppointments]);
 
+  // Fetch list of doctors for the filter dropdown
   useEffect(() => {
     apiClient.get('/api/users/', { params: { role: 'doctor' }})
       .then(response => setDoctors(response.data))
@@ -107,7 +120,6 @@ export default function AllPatientsLog() {
 
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-lg border border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-        {/* --- THIS IS THE FIX --- */}
         <div className="flex items-center space-x-2">
             <Calendar size={18} className="text-gray-500 flex-shrink-0" />
             <label htmlFor="appointmentDate" className="text-sm font-medium text-gray-700 sr-only">Date</label>
